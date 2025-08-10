@@ -1,7 +1,7 @@
 # app/routes/locality.py
 from fastapi import APIRouter, Query
-from services.locality_service import get_nearby_places
-from utils.formatter import format_locality_response
+from ..services.locality_service import get_nearby_places
+from ..utils.formatter import format_locality_response
 
 router = APIRouter(prefix="/get_locality", tags=["Locality"])
 

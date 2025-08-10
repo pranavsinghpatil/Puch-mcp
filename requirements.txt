@@ -4,3 +4,8 @@ SQLAlchemy
 aiosqlite
 httpx
 python-dotenv
+requests
+pandas
+# sklearn
+rapidfuzz
+scikit-learn

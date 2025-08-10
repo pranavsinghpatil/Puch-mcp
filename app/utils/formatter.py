@@ -1,12 +1,30 @@
 # app/utils/formatter.py
 def format_recipe_response(data):
     return (
-        f"🍽 Dish: {data['name']}\n"
-        f"🕒 Cooking Time: {data['cook_time']} mins | Serves: {data['servings']}\n"
-        f"📍 Famous in: {data['region']}\n\n"
-        f"🛒 Ingredients:\n" + "\n".join([f"- {i}" for i in data['ingredients']]) + "\n\n"
-        f"👨‍🍳 Steps:\n{data['instructions']}"
+        f"🍽 Dish: {data.get('name', 'N/A')}\n"
+        f"📖 Description: {data.get('description', 'No description')}\n"
+        f"🍲 Cuisine: {data.get('cuisine', 'Unknown')}\n"
+        f"📚 Course: {data.get('course', 'Unknown')}\n"
+        f"🥗 Diet: {data.get('diet', 'Unknown')}\n"
+        f"⏱ Prep Time: {data.get('prep_time', 'Unknown')}\n"
+        f"🛒 Ingredients: {data.get('ingredients', 'Not listed')}\n"
+        f"📝 Instructions: {data.get('instructions', 'Not provided')}\n"
+        f"🖼 Image: {data.get('image_url', 'No image')}"
     )
+
+def format_options_response(options):
+    return "I found several matching dishes:\n" + "\n".join(
+        [f"{i+1}. {opt}" for i, opt in enumerate(options)]
+    ) + "\n\nPlease reply with the exact name or number."
+
+def format_guess_with_options(guess, options):
+    return (
+        f"🤔 Did you mean '{guess}'?\nHere are similar dishes:\n"
+        + "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(options)])
+        + "\n\nPlease reply with the name or number."
+    )
+
+
 
 def format_locality_response(dish, city, places):
     response = f"📍 Where to find *{dish}* in {city}:\n"
