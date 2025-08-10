@@ -1,0 +1,41 @@
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+
+# Virtualenv
+.tarri/
+.venv/
+venv/
+env/
+
+# Test output
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Generated data files
+app/data/recipes.csv
+alt/backend/data/recipes.db
+dropped_recipes.txt
+# The raw data is often large and not checked in
+app/data/raw.csv
+
+# Secrets
+.env
+*.env
+
+# IDE files
+.idea/
+.vscode/
+
+# Node backend in 'alt'
+alt/backend/node_modules/
+npm-debug.log
+yarn-error.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
