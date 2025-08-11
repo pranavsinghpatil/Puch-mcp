@@ -1,6 +1,6 @@
 # app/main.py
 from fastapi import FastAPI
-from .routes import recipe, locality, recommend, auth
+from .routes import recipe, locality, recommend, auth, mcp
 
 app = FastAPI(
     title="Desi Food MCP",
@@ -13,6 +13,7 @@ app.include_router(recipe.router)
 app.include_router(locality.router)
 app.include_router(recommend.router)
 app.include_router(auth.router)
+app.include_router(mcp.router)
 
 print("✨ Desi Food MCP server is running... Visit http://localhost:8000/docs for API documentation.")
 
