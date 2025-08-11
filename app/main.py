@@ -1,6 +1,7 @@
 # app/main.py
 from fastapi import FastAPI
-from .routes import recipe, locality, recommend, auth, mcp
+import os
+from app.routes import recipe, locality, recommend, auth, mcp  # <-- absolute import
 
 app = FastAPI(
     title="Desi Food MCP",
@@ -15,7 +16,7 @@ app.include_router(recommend.router)
 app.include_router(auth.router)
 app.include_router(mcp.router)
 
-print("✨ Desi Food MCP server is running... Visit http://localhost:8000/docs for API documentation.")
+print("✨ Desi Food MCP server is running... Visit /docs for API documentation.")
 
 @app.get("/")
 def root():
@@ -23,4 +24,5 @@ def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 5000))  # Railway assigns PORT dynamically
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False)
