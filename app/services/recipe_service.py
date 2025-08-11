@@ -5,8 +5,16 @@ from rapidfuzz import fuzz, process
 # Path to your cleaned CSV
 DATA_PATH = os.path.join(os.path.dirname(__file__), "../data/recipes.csv")
 
-# Load once
-df = pd.read_csv(DATA_PATH, dtype=str).fillna("")  # ensure strings
+# Load once (gracefully handle missing data file in container)
+try:
+    df = pd.read_csv(DATA_PATH, dtype=str).fillna("")  # ensure strings
+except FileNotFoundError:
+    # Fallback to an empty dataframe so the API can still boot (e.g., for MCP handshake)
+    df = pd.DataFrame(columns=[
+        "name", "description", "cuisine", "course", "diet",
+        "ingredients", "instructions", "image_url"
+    ])
+
 # Normalize columns used later
 for col in ["name", "description", "cuisine", "course", "diet", "ingredients", "instructions", "image_url"]:
     if col not in df.columns:
@@ -79,6 +87,8 @@ def get_recipe_details(query: str, diet: str = None, course: str = None, limit: 
     """
     if not query:
         return None
+    if df.empty:
+        return None
 
     # Collect fuzzy matches across combined text
     matches = _collect_matches(query, limit=40, score_threshold=40)  # wide net first
@@ -142,6 +152,8 @@ def get_recommendations(keyword: str, diet: str = None, course: str = None, top_
     """
     recs = []
 
+    if df.empty:
+        return []
     if not keyword:
         for _, row in df.head(top_n).iterrows():
             recs.append((row["name"], row.get("course", "")))
