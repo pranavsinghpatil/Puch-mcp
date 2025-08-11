@@ -19,3 +19,6 @@ print("✨ Desi Food MCP server is running... Visit http://localhost:8000/docs f
 def root():
     return {"message": "Desi Food MCP is running!"}
 
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)

@@ -9,7 +9,7 @@ def format_recipe_response(data):
         f"⏱ Prep Time: {data.get('prep_time', 'Unknown')}\n"
         f"🛒 Ingredients: {data.get('ingredients', 'Not listed')}\n"
         f"📝 Instructions: {data.get('instructions', 'Not provided')}\n"
-        f"🖼 Image: {data.get('image_url', 'No image')}"
+        # f"🖼 Image: {data.get('image_url', 'No image')}"
     )
 
 def format_options_response(options):

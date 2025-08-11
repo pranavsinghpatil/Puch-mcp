@@ -6,6 +6,7 @@ httpx
 python-dotenv
 requests
 pandas
-# sklearn
+spacy
 rapidfuzz
 scikit-learn
+# in shell - python -m spacy download en_core_web_sm 

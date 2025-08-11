@@ -1,5 +1,9 @@
 from fastapi import APIRouter, Query
-from app.services.recipe_service import get_recipe_details
+from app.services.recipe_service import (
+    get_recipe_details,
+    get_recommendations,
+    get_full_recipes_from_names
+)
 from app.utils.formatter import (
     format_recipe_response,
     format_options_response,
@@ -7,14 +11,12 @@ from app.utils.formatter import (
 )
 from time import time
 import re
-
-# ===== NLP Imports =====
 import spacy
-from rapidfuzz import fuzz, process
 
+# Load NLP model once
 nlp = spacy.load("en_core_web_sm")
 
-# Basic food synonyms dictionary
+# Synonyms map for better matching
 SYNONYMS = {
     "aubergine": "eggplant",
     "brinjal": "eggplant",
@@ -24,21 +26,19 @@ SYNONYMS = {
     "rajma": "kidney beans"
 }
 
-# Intent keywords
+# Keywords for special filtering
 DIET_KEYWORDS = ["vegetarian", "vegan", "gluten-free", "non-veg", "non vegetarian"]
 COURSE_KEYWORDS = ["breakfast", "lunch", "dinner", "snack", "dessert", "main course", "side dish"]
 
 router = APIRouter()
 
-# In-memory user session store
+# Session store
 active_user_sessions = {}
 SESSION_TIMEOUT = 180  # seconds
 
+# ------------------ SESSION HELPERS ------------------ #
 def set_user_session(user_id: str, data: dict):
-    active_user_sessions[user_id] = {
-        **data,
-        "timestamp": time()
-    }
+    active_user_sessions[user_id] = {**data, "timestamp": time()}
 
 def get_user_session(user_id: str):
     session = active_user_sessions.get(user_id)
@@ -52,88 +52,145 @@ def get_user_session(user_id: str):
 def clear_user_session(user_id: str):
     active_user_sessions.pop(user_id, None)
 
-# ===== NLP Entity Extraction =====
+# ------------------ NLP HELPERS ------------------ #
 def extract_entities(user_input: str):
+    # Replace synonyms before processing
+    for word, repl in SYNONYMS.items():
+        user_input = re.sub(rf"\b{word}\b", repl, user_input, flags=re.IGNORECASE)
+
     doc = nlp(user_input.lower())
 
     dish = None
     diet = None
     course = None
 
-    # Replace synonyms
-    for word, repl in SYNONYMS.items():
-        user_input = re.sub(rf"\b{word}\b", repl, user_input, flags=re.IGNORECASE)
-
-    # Detect diet and course
     for token in doc:
         if token.text in DIET_KEYWORDS:
             diet = token.text
         if token.text in COURSE_KEYWORDS:
             course = token.text
 
-    # Guess dish name (noun chunks)
     noun_chunks = [chunk.text for chunk in doc.noun_chunks]
     if noun_chunks:
-        dish = noun_chunks[0]  # First noun phrase as primary dish guess
+        dish = noun_chunks[0]
 
     return dish, diet, course
 
-# ===== Route =====
+# ------------------ MAIN ROUTE ------------------ #
 @router.get("/get_recipe")
 def get_recipe(user_id: str = Query(...), dish: str = Query(...)):
-    dish_clean = dish.strip()
+    dish_clean = dish.strip().lower()
 
-    # If user sends only a number
+    # -------- Handle numeric choice -------- #
     if dish_clean.isdigit():
         session = get_user_session(user_id)
-        if session and "options" in session:
-            choice_idx = int(dish_clean) - 1
-            if 0 <= choice_idx < len(session["options"]):
-                chosen_dish = session["options"][choice_idx]
-                clear_user_session(user_id)
-                result = get_recipe_details(chosen_dish)
-                if result and result["type"] == "recipe":
-                    return {"response": format_recipe_response(result["data"])}
-                else:
-                    return {"response": f"❌ Sorry, I couldn't fetch details for '{chosen_dish}'."}
-            else:
-                return {"response": f"⚠ Invalid choice. Please reply dish name or a number between 1 and {len(session['options'])}."}
-        return {"response": "⚠ No active choices found. Please type the dish name again."}
+        if not session:
+            return {"response": "⚠ No list to choose from right now. Try searching again."}
 
-    # Extract NLP entities
+        choice_idx = int(dish_clean) - 1
+
+        # Prefer explicit options (returned from fuzzy search)
+        options = session.get("options") or []
+        source = "options"
+        if not options:
+            # Fallback to recommendations list if options absent
+            options = session.get("recommendations") or []
+            source = "recommendations"
+        if not options:
+            return {"response": "⚠ No list to choose from right now. Try searching again."}
+
+        if 0 <= choice_idx < len(options):
+            chosen_dish = options[choice_idx]
+            clear_user_session(user_id)
+            result = get_recipe_details(chosen_dish)
+
+            if result and result.get("type") == "recipe":
+                return {"response": format_recipe_response(result["data"])}
+            else:
+                return {"response": f"❌ Sorry, I couldn't fetch details for '{chosen_dish}'."}
+        else:
+            return {"response": f"⚠ Invalid choice. Please reply with a number between 1 and {len(options)}."}
+
+    # -------- Handle "show more" request -------- #
+    if dish_clean in ["show more", "showmore", "more"]:
+        session = get_user_session(user_id)
+        if not session or "recommendations" not in session or not session["recommendations"]:
+            return {"response": "⚠ No saved recommendations. Please search for a dish first."}
+
+        full_recipes = get_full_recipes_from_names(session["recommendations"])
+        clear_user_session(user_id)
+
+        if not full_recipes:
+            return {"response": "❌ Sorry, no recipes found for those recommendations."}
+
+        return {"response": "\n\n".join(format_recipe_response(r) for r in full_recipes)}
+
+    # -------- Substring match against previous suggestions -------- #
+    session = get_user_session(user_id)
+    if session:
+        candidates = (session.get("options") or []) + (session.get("recommendations") or [])
+        for name in candidates:
+            if dish_clean in name.lower():
+                # treat this as user selecting that dish
+                clear_user_session(user_id)
+                result = get_recipe_details(name)
+                if result and result.get("type") == "recipe":
+                    return {"response": format_recipe_response(result["data"])}
+                break
+
+    # -------- Extract search entities -------- #
     dish_entity, diet, course = extract_entities(dish_clean)
 
-    # If no dish found, check if it’s a modification to last search
+    # Fallback to last search if dish not found
     if not dish_entity:
         session = get_user_session(user_id)
-        if session and "last_dish" in session:
-            dish_entity = session["last_dish"]
-            # Override stored diet/course if mentioned
+        if session:
+            dish_entity = session.get("last_dish", dish_clean)
             diet = diet or session.get("diet")
             course = course or session.get("course")
+        else:
+            dish_entity = dish_clean
 
-    # Run search
-    result = get_recipe_details(dish_entity)
+    # -------- Fetch main recipe -------- #
+    result = get_recipe_details(dish_entity, diet=diet, course=course)
 
-    # Store context for future messages
+    if not result:
+        return {"response": f"❌ Sorry, I couldn't find anything for '{dish_entity}'."}
+
+    # -------- Get recommendations -------- #
+    recs = get_recommendations(dish_entity, diet=diet, course=course, top_n=3)
+    rec_names = [r[0] for r in recs]
+    rec_courses = [r[1] for r in recs]
+
+    # Store session for later
     set_user_session(user_id, {
         "last_dish": dish_entity,
         "diet": diet,
         "course": course,
-        "options": result["options"] if result and "options" in result else []
+        "options": result.get("options", []),
+        "recommendations": rec_names
     })
 
-    # Response handling
-    if not result:
-        return {"response": f"❌ Sorry, I couldn't find anything for '{dish_entity}'."}
-
+    # -------- Build main response -------- #
     if result["type"] == "recipe":
-        return {"response": format_recipe_response(result["data"])}
+        base_resp = format_recipe_response(result["data"])
+    elif result["type"] == "guess_with_options":
+        base_resp = format_guess_with_options(result["guess"], result["options"])
+    elif result["type"] == "options":
+        base_resp = format_options_response(result["data"])
+    else:
+        base_resp = "⚠ Unexpected error occurred while fetching the recipe."
 
-    if result["type"] == "guess_with_options":
-        return {"response": format_guess_with_options(result["guess"], result["options"])}
+    # -------- Append recommendations preview -------- #
+    if recs:
+        rec_lines = [
+            f"{i+1}. {name} ({course})" if course else f"{i+1}. {name}"
+            for i, (name, course) in enumerate(recs)
+        ]
+        base_resp += (
+            "\n\n💡 You might also like:\n" +
+            "\n".join(rec_lines) +
+            "\n(Reply with the name or number to see details!)"
+        )
 
-    if result["type"] == "options":
-        return {"response": format_options_response(result["data"])}
-
-    return {"response": "⚠ Unexpected error occurred."}
+    return {"response": base_resp}
